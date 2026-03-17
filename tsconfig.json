@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "NodeNext", // Lebih cocok untuk proyek TS modern
+    "moduleResolution": "NodeNext",
+    "rootDir": "./src",
+    "outDir": "./dist",
+    
+    // Interop agar import Express/Cors tidak error
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    
+    // Matikan ini jika Anda tidak ingin terlalu ketat dengan 'import type'
+    // Atau tetap nyalakan tapi ikuti cara import di langkah ke-3
+    "verbatimModuleSyntax": true, 
+    
+    "strict": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "declaration": true
+  },
+  "include": ["src/**/*"]
+}
