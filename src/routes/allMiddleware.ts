@@ -30,7 +30,7 @@ const clients = new Map<string, Client>();
 
 export const rateLimitMiddleware = (req: Request, res: Response, next: NextFunction) => {
     const ip = req.ip || 'unknown';
-    const identifier = `${ip}:${req.path}`;  
+    const identifier = `${ip}:${req.path}`; 
     const now = Date.now();
     let client = clients.get(identifier);
 
@@ -39,30 +39,35 @@ export const rateLimitMiddleware = (req: Request, res: Response, next: NextFunct
         clients.set(identifier, client);
     }
 
-  // Cek jika sedang dikunci
-  if (now < client.lockedUntil) {
-    const remaining = Math.ceil((client.lockedUntil - now) / 1000);
-    return res.status(429).json({
-      message: `Requestmu ditolak, Coba lagi dalam ${remaining} detik`
-    });
-  }
+    // 1. Reset hits jika sudah lewat masa jendela (30 detik)
+    if (now - client.lastSeen > 30000) {
+        client.hits = 0;
+    }
 
-  // Reset hit jika sudah lewat 30 detik dari lastSeen
-  if (now - client.lastSeen > 30000) {
-    client.hits = 0;
-  }
+    // 2. Gabungkan Cek Lock dan Cek Limit
+    // Kita cek apakah sekarang masih dalam masa lock OR hits sudah melebihi batas
+    if (now < client.lockedUntil || client.hits >= 5) {
+        
+        // Jika baru saja mencapai limit (belum ada lockedUntil), pasang kuncinya
+        if (now >= client.lockedUntil) {
+            client.lockedUntil = now + 30000; // Kunci 30 detik
+            console.log(`[RateLimit] LIMIT TRIGGERED: ${identifier}`);
+        }
 
-  client.hits++;
-  client.lastSeen = now;
+        const remaining = Math.ceil((client.lockedUntil - now) / 1000);
+        
+        console.log(`[RateLimit] REJECTED: ${identifier} | Retry in ${remaining}s`);
 
-  if (client.hits > 5) {
-    client.lockedUntil = now + 30000; // Kunci 30 detik
-    return res.status(429).json({
-      message: "Batas 5 kali percobaan per 30 detik tercapai. Anda dikunci selama 30 detik."
-    });
-  }
+        return res.status(429).json({
+            message: `Batas 5 kali percobaan per 30 detik tercapai. Coba lagi dalam ${remaining} detik`
+        });
+    }
 
-  next();
+    // 3. Update data jika lolos pengecekan
+    client.hits++;
+    client.lastSeen = now;
+
+    next();
 };
 
 // --- CORS Middleware ---
