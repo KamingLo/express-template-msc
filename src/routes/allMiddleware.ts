@@ -29,14 +29,15 @@ interface Client {
 const clients = new Map<string, Client>();
 
 export const rateLimitMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const ip = req.ip || 'unknown';
-  const now = Date.now();
-  let client = clients.get(ip);
+    const ip = req.ip || 'unknown';
+    const identifier = `${ip}:${req.path}`;  
+    const now = Date.now();
+    let client = clients.get(identifier);
 
-  if (!client) {
-    client = { hits: 0, lastSeen: now, lockedUntil: 0 };
-    clients.set(ip, client);
-  }
+    if (!client) {
+        client = { hits: 0, lastSeen: now, lockedUntil: 0 };
+        clients.set(identifier, client);
+    }
 
   // Cek jika sedang dikunci
   if (now < client.lockedUntil) {
