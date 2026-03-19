@@ -1,18 +1,46 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as jose from 'jose';
 
+// 1. Interface untuk Request yang terautentikasi (Type-Safe)
+declare global {
+  namespace Express {
+    interface user {
+        id: string;
+        email: string;
+      }
+    }
+  }
+  
 // --- Auth Middleware ---
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: "Token dibutuhkan" });
+  let tokenString = '';
+
+  // A. Cek Cookie (Web) - Membutuhkan cookie-parser di app.ts
+  if (req.cookies && req.cookies.auth_token) {
+    tokenString = req.cookies.auth_token;
+  } 
+  // B. Cek Header (Mobile/Flutter)
+  else {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      tokenString = authHeader.split(' ')[1];
+    }
   }
 
-  const token = authHeader.split(' ')[1];
+  if (!tokenString) {
+    return res.status(401).json({ error: "Sesi berakhir, silakan login kembali" });
+  }
+
   try {
     const secret = new TextEncoder().encode(process.env.JWT_SECRET || '');
-    await jose.jwtVerify(token, secret);
+    const { payload } = await jose.jwtVerify(tokenString, secret);
+
+    // Simpan ke request agar bisa dipakai di controller (Setara c.Set di Gin)
+    req.user = {
+      id: payload.user_id as string,
+      email: payload.email as string,
+    };
+    
     next();
   } catch (err) {
     res.status(401).json({ error: "Token tidak valid atau kedaluwarsa" });
@@ -28,6 +56,16 @@ interface Client {
 
 const clients = new Map<string, Client>();
 
+// Cleanup Memory (Penting agar tidak memory leak seperti init() di Go)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, client] of clients.entries()) {
+    if (now - client.lastSeen > 300000) { // 5 menit tidak aktif
+      clients.delete(key);
+    }
+  }
+}, 120000); // Cek setiap 2 menit
+
 export const rateLimitMiddleware = (req: Request, res: Response, next: NextFunction) => {
     const ip = req.ip || 'unknown';
     const identifier = `${ip}:${req.path}`; 
@@ -39,34 +77,23 @@ export const rateLimitMiddleware = (req: Request, res: Response, next: NextFunct
         clients.set(identifier, client);
     }
 
-    // 1. Reset hits jika sudah lewat masa jendela (30 detik)
     if (now - client.lastSeen > 30000) {
         client.hits = 0;
     }
 
-    // 2. Gabungkan Cek Lock dan Cek Limit
-    // Kita cek apakah sekarang masih dalam masa lock OR hits sudah melebihi batas
     if (now < client.lockedUntil || client.hits >= 5) {
-        
-        // Jika baru saja mencapai limit (belum ada lockedUntil), pasang kuncinya
         if (now >= client.lockedUntil) {
-            client.lockedUntil = now + 30000; // Kunci 30 detik
-            console.log(`[RateLimit] LIMIT TRIGGERED: ${identifier}`);
+            client.lockedUntil = now + 30000;
         }
 
         const remaining = Math.ceil((client.lockedUntil - now) / 1000);
-        
-        console.log(`[RateLimit] REJECTED: ${identifier} | Retry in ${remaining}s`);
-
         return res.status(429).json({
             message: `Batas 5 kali percobaan per 30 detik tercapai. Coba lagi dalam ${remaining} detik`
         });
     }
 
-    // 3. Update data jika lolos pengecekan
     client.hits++;
     client.lastSeen = now;
-
     next();
 };
 
@@ -75,8 +102,8 @@ export const corsMiddleware = (req: Request, res: Response, next: NextFunction) 
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",");
   const origin = req.headers.origin as string;
 
-  let isAllowed = !origin; // Izinkan jika non-browser (Postman)
-  if (origin && allowedOrigins.includes(origin.trim())) {
+  let isAllowed = !origin; 
+  if (origin && allowedOrigins.some(o => o.trim() === origin)) {
     isAllowed = true;
   }
 
@@ -86,8 +113,8 @@ export const corsMiddleware = (req: Request, res: Response, next: NextFunction) 
 
   if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);

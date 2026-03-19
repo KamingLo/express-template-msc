@@ -4,7 +4,7 @@ import crypto from 'crypto';
  * GenerateCustomID menghasilkan format: PREFIX-YYYYMMDD-RANDOM
  */
 export const generateCustomID = (prefix: string, length: number): string => {
-  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const charset = "abcdefghijklmnopqrstuvwxyz0123456789";
   
   // Format Tanggal: YYYYMMDD
   const now = new Date();

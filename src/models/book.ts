@@ -13,7 +13,7 @@ const BookSchema: Schema = new Schema(
   {
     _id: {
       type: String,
-      default: () => generateCustomID('BK', 4),
+      default: () => generateCustomID('bk', 4),
     },
     title: { 
       type: String, 

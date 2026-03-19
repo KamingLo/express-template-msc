@@ -14,7 +14,7 @@ const UserSchema: Schema = new Schema(
   {
     _id: {
       type: String,
-      default: () => generateCustomID('US', 4),
+      default: () => generateCustomID('us', 4),
     },
     username: { 
       type: String, 
@@ -47,4 +47,11 @@ export const User = mongoose.model<IUser>('User', UserSchema);
 export interface UserLogin {
   email: string;
   password: string;
+}
+
+export interface UserRegister {
+    otp_code: string;
+    email:string;
+    password:string;
+    username:string;
 }
