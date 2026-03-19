@@ -8,7 +8,7 @@ const setupRouter = (): Router => {
 
   // Global Middleware
   router.use(corsMiddleware);
-//   router.use(rateLimitMiddleware);
+  router.use(rateLimitMiddleware);
 
   // Route Groups
   router.use('/auth', authRoutes);
