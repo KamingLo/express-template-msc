@@ -38,7 +38,7 @@ export const initOAuth = (app: Application): void => {
                 callbackURL: process.env.GOOGLE_CALLBACK_URL || '',
                 scope: ['email', 'profile'],
             },
-            (accessToken, refreshToken, profile, done) => {
+            (_accessToken, _refreshToken, profile, done) => {
             // 1. Ambil email dari array emails Google
             const email = profile.emails && profile.emails[0] ? profile.emails[0].value : '';
 

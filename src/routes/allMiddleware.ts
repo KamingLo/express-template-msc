@@ -1,124 +1,122 @@
-import type { Request, Response, NextFunction } from 'express';
-import * as jose from 'jose';
+import { type Request, type  Response, type NextFunction } from 'express';
+import { sendError } from '../utils/response.js';
+import { validateToken } from '../utils/jwt.js';
 
-// 1. Interface untuk Request yang terautentikasi (Type-Safe)
-declare global {
-  namespace Express {
-    interface user {
-        id: string;
-        email: string;
-      }
-    }
-  }
-  
-// --- Auth Middleware ---
-export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-  let tokenString = '';
-
-  // A. Cek Cookie (Web) - Membutuhkan cookie-parser di app.ts
-  if (req.cookies && req.cookies.auth_token) {
-    tokenString = req.cookies.auth_token;
-  } 
-  // B. Cek Header (Mobile/Flutter)
-  else {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      tokenString = authHeader.split(' ')[1];
-    }
-  }
-
-  if (!tokenString) {
-    return res.status(401).json({ error: "Sesi berakhir, silakan login kembali" });
-  }
-
-  try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || '');
-    const { payload } = await jose.jwtVerify(tokenString, secret);
-
-    // Simpan ke request agar bisa dipakai di controller (Setara c.Set di Gin)
-    req.user = {
-      id: payload.user_id as string,
-      email: payload.email as string,
-    };
-    
-    next();
-  } catch (err) {
-    res.status(401).json({ error: "Token tidak valid atau kedaluwarsa" });
-  }
-};
-
-// --- Rate Limit Middleware (Custom Lockout Logic) ---
 interface Client {
-  hits: number;
-  lastSeen: number;
-  lockedUntil: number;
+  count: number;
+  lastSeen: Date;
+  isLockedUntil: Date;
+  firstRequestAt: Date;
 }
 
 const clients = new Map<string, Client>();
 
-// Cleanup Memory (Penting agar tidak memory leak seperti init() di Go)
 setInterval(() => {
-  const now = Date.now();
-  for (const [key, client] of clients.entries()) {
-    if (now - client.lastSeen > 300000) { // 5 menit tidak aktif
-      clients.delete(key);
+  const now = new Date();
+  for (const [ip, data] of clients.entries()) {
+    if (now.getTime() - data.lastSeen.getTime() > 5 * 60 * 1000) {
+      clients.delete(ip);
     }
   }
-}, 120000); // Cek setiap 2 menit
+}, 2 * 60 * 1000); 
 
-export const rateLimitMiddleware = (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip || 'unknown';
-    const identifier = `${ip}:${req.path}`; 
-    const now = Date.now();
-    let client = clients.get(identifier);
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
 
-    if (!client) {
-        client = { hits: 0, lastSeen: now, lockedUntil: 0 };
-        clients.set(identifier, client);
-    }
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return sendError(res, 401, "Sesi berakhir, silakan login kembali", null);
+  }
 
-    if (now - client.lastSeen > 30000) {
-        client.hits = 0;
-    }
+  const tokenString = authHeader.split(' ')[1];
 
-    if (now < client.lockedUntil || client.hits >= 5) {
-        if (now >= client.lockedUntil) {
-            client.lockedUntil = now + 30000;
-        }
+  try {
+    const claims = await validateToken(tokenString, process.env.JWT_SECRET!);
+    
+    res.locals.userId = claims.user_id;
+    res.locals.userEmail = claims.email;
 
-        const remaining = Math.ceil((client.lockedUntil - now) / 1000);
-        return res.status(429).json({
-            message: `Batas 5 kali percobaan per 30 detik tercapai. Coba lagi dalam ${remaining} detik`
-        });
-    }
-
-    client.hits++;
-    client.lastSeen = now;
     next();
+  } catch (err: any) {
+    return sendError(res, 401, "Token tidak valid atau kadaluarsa", err.message);
+  }
+};
+export const rateLimitMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const path = req.path;
+  const identifier = `${ip}:${path}`;
+  const now = new Date();
+
+  let client = clients.get(identifier);
+
+  if (!client) {
+    client = {
+      count: 0,
+      lastSeen: now,
+      isLockedUntil: new Date(0),
+      firstRequestAt: now,
+    };
+    clients.set(identifier, client);
+    console.log(`[RateLimit] New Registration: ${identifier}`);
+  }
+
+  client.lastSeen = now;
+
+  if (now < client.isLockedUntil) {
+    const remaining = Math.ceil((client.isLockedUntil.getTime() - now.getTime()) / 1000);
+    console.log(`[RateLimit] REJECTED: ${identifier} | Locked for ${remaining}s`);
+    return res.status(429).json({
+      message: `Batas 5 kali percobaan per 30 detik tercapai. Coba lagi dalam ${remaining} detik`
+    });
+  }
+
+  if (now.getTime() - client.firstRequestAt.getTime() > 30 * 1000) {
+    client.count = 0;
+    client.firstRequestAt = now;
+  }
+
+  client.count++;
+
+  if (client.count > 5) {
+    client.isLockedUntil = new Date(now.getTime() + 30 * 1000);
+    console.log(`[RateLimit] LIMIT TRIGGERED: ${identifier} | Locked for 30s`);
+    
+    return res.status(429).json({
+      message: `Batas 5 kali percobaan per 30 detik tercapai. Coba lagi dalam 30 detik`
+    });
+  }
+
+  return next();
 };
 
-// --- CORS Middleware ---
 export const corsMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",");
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [];
   const origin = req.headers.origin as string;
 
-  let isAllowed = !origin; 
-  if (origin && allowedOrigins.some(o => o.trim() === origin)) {
+  let isAllowed = false;
+  if (!origin) {
     isAllowed = true;
+  } else {
+    isAllowed = allowedOrigins.some(o => o.trim() === origin);
   }
 
   if (!isAllowed) {
-    return res.status(403).json({ message: "Akses ditolak oleh kebijakan CORS" });
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    return res.status(403).json({
+      message: "Akses ditolak, Origin tidak diizinkan oleh kebijakan CORS"
+    });
   }
 
-  if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET, PATCH, DELETE');
 
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
 
-  next();
+  return next();
 };

@@ -1,23 +1,34 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "module": "NodeNext", // Lebih cocok untuk proyek TS modern
+    /* Base Options */
+    "target": "ES2022", // Pin ke versi spesifik untuk stabilitas di Node.js modern
+    "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "rootDir": "./src",
     "outDir": "./dist",
     
-    // Interop agar import Express/Cors tidak error
+    /* Interop & Syntax */
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    
-    // Matikan ini jika Anda tidak ingin terlalu ketat dengan 'import type'
-    // Atau tetap nyalakan tapi ikuti cara import di langkah ke-3
     "verbatimModuleSyntax": true, 
+    "resolveJsonModule": true, // Memungkinkan import file .json (seperti package.json)
     
+    /* Strictness & Quality */
     "strict": true,
-    "skipLibCheck": true,
-    "sourceMap": true,
-    "declaration": true
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    
+    /* Production Optimization */
+    "forceConsistentCasingInFileNames": true,
+    "removeComments": true,
+    "sourceMap": true, // Tetap nyalakan agar stack trace di produksi bisa dibaca (via source-map-support)
+    "declaration": false, // Matikan jika ini aplikasi mandiri (bukan library) untuk mempercepat build
+    "skipLibCheck": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"] // Pastikan file test tidak ikut ter-build ke dist
 }

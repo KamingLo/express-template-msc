@@ -11,7 +11,7 @@ export const generateToken = async (userID: string, email: string): Promise<stri
     .setIssuedAt();
 
   if (isExpires === "enable") {
-    let hours = 2; // Default 2 jam
+    let hours = 2;
     
     if (expiresInStr) {
       const parsed = parseInt(expiresInStr, 10);
@@ -22,4 +22,18 @@ export const generateToken = async (userID: string, email: string): Promise<stri
   }
 
   return await jwt.sign(secret);
+};
+
+export const validateToken = async (tokenString: string, secretStr: string): Promise<any> => {
+  try {
+    const secret = new TextEncoder().encode(secretStr);
+
+    const { payload } = await jose.jwtVerify(tokenString, secret, {
+      algorithms: ['HS256'],
+    });
+
+    return payload;
+  } catch (err) {
+    throw new Error('Invalid token');
+  }
 };

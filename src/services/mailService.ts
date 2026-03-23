@@ -34,11 +34,11 @@ export const sendRegistrationOTP = async (toEmail: string, otp: string): Promise
 
     // Kirim asinkron (Background process)
     sendEmail(toEmail, subject, htmlContent).catch((err) => {
-      console.error(`[Error Background] Gagal kirim email ke ${toEmail}:`, err);
+      console.error(`Gagal kirim email ke ${toEmail}:`, err);
     });
     
   } catch (err) {
     const error = err as Error;
-    throw new Error(`gagal memproses email: ${error.message}`);
+    throw new Error(`Gagal memproses email: ${error.message}`);
   }
 };
