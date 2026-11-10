@@ -1,7 +1,3 @@
-Solid choice. Using **Node.js 24** ensures you're ahead of the curve with the latest security patches and performance improvements. I've updated the documentation to reflect this and translated everything into English for a more professional, global-standard repository.
-
----
-
 # Express TypeScript M-S-C Template
 
 This repository is a high-performance migration of a Go-based (Gin & GORM) boilerplate to **Express & Mongoose**, utilizing a strict **Model-Service-Controller (MSC)** architecture. It is built with TypeScript 5+ using `verbatimModuleSyntax` for optimized compilation and type safety.
